@@ -1,2 +1,8 @@
 # forod-gameplay-escape
-escape from forod and try ur best to catch l3otla 
+GOAL : catch the l3otla without getting caught from the forod
+
+ITEMS AND TOOLS : u can dash and push the forod and get buffs to cartch the l3otla
+
+NOTICE : the l3otla can make u stunned for a bit so be carefull
+
+SCREENSHOTS : 
