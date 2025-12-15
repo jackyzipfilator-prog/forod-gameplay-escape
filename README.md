@@ -1,4 +1,4 @@
-# forod-gameplay-escape
+!forod-gameplay-escape
 
 # GOAL :
 
@@ -6,7 +6,7 @@ catch the l3otla without getting caught from the forod
 
 # ITEMS AND TOOLS :
 
-u can dash and push the forod and get buffs to cartch the l3otla
+u can dash and push the forod and get buffs to catch the l3otla
 
 # NOTICE :
 
