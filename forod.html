@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Chase Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script type="text/babel">
+        // Replicating the lucide-react icons used in the script
+        const AlertCircle = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+        const Monitor = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>;
+        const Smartphone = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>;
+    </script>
+</head>
+<body class="bg-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Paste the full React component code here
+        const { useState, useEffect, useRef } = React;
+
+        const ArenaGame = () => {
+          const canvasRef = useRef(null);
+          const [gameState, setGameState] = useState('menu');
+          const [controlMode, setControlMode] = useState('pc');
+          const [score, setScore] = useState(0);
+          const [caughtBy, setCaughtBy] = useState('');
+          const [activeBuffs, setActiveBuffs] = useState([]);
+          const [stunned, setStunned] = useState(false);
+          const [canvasDimensions, setCanvasDimensions] = useState({ width: 600, height: 600 });
+          
+          const gameRef = useRef({
+            ana: { x: 300, y: 300, size: 10, speed: 3 },
+            l3otla: { x: 100, y: 100, size: 10, speed: 6 },
+            forod: { x: 500, y: 500, size: 10, speed: 2.8 },
+            shadowClones: [],
+            buffs: [],
+            keys: {},
+            width: 600,
+            height: 600,
+            speedBoostActive: false,
+            speedBoostTime: 0,
+            dashReady: true,
+            dashCooldown: 0,
+            pushReady: true,
+            pushCooldown: 0,
+            invisibleActive: false,
+            invisibleTime: 0,
+            stunned: false,
+            stunnedTime: 0,
+            l3otlaStunReady: true,
+            l3otlaStunCooldown: 0,
+            l3otlaDashReady: true,
+            l3otlaDashCooldown: 0,
+            l3otlaCloneReady: true,
+            l3otlaCloneCooldown: 0,
+            jukeTimer: 0,
+            jukeDirection: { x: 0, y: 0 },
+            joystick: { x: 0, y: 0, active: false, startX: 0, startY: 0 },
+            touchMovement: { x: 0, y: 0 }
+          });
+
+          const buffTypes = [
+            { name: 'speed', color: '#fbbf24', icon: '⚡', effect: 'Speed Boost' },
+            { name: 'dash', color: '#8b5cf6', icon: '💨', effect: 'Dash' },
+            { name: 'invisible', color: '#06b6d4', icon: '👻', effect: 'Invisible' },
+            { name: 'slow', color: '#f97316', icon: '🐌', effect: 'Slow Enemies' }
+          ];
+
+          const spawnBuff = () => {
+            const game = gameRef.current;
+            const buff = {
+              x: Math.random() * (game.width - 40) + 20,
+              y: Math.random() * (game.height - 40) + 20,
+              type: buffTypes[Math.floor(Math.random() * buffTypes.length)],
+              size: 15
+            };
+            return buff;
+          };
+
+          const selectControlMode = (mode) => {
+            setControlMode(mode);
+            setGameState('waiting');
+            
+            // Set dimensions based on control mode
+            if (mode === 'mobile') {
+              const width = 360;
+              const height = 640;
+              setCanvasDimensions({ width, height });
+              gameRef.current.width = width;
+              gameRef.current.height = height;
+              gameRef.current.ana = { x: 180, y: 320, size: 10, speed: 3 };
+              gameRef.current.l3otla = { x: 60, y: 100, size: 10, speed: 6 };
+              gameRef.current.forod = { x: 300, y: 540, size: 10, speed: 2.8 };
+            } else {
+              const width = 600;
+              const height = 600;
+              setCanvasDimensions({ width, height });
+              gameRef.current.width = width;
+              gameRef.current.height = height;
+              gameRef.current.ana = { x: 300, y: 300, size: 10, speed: 3 };
+              gameRef.current.l3otla = { x: 100, y: 100, size: 10, speed: 6 };
+              gameRef.current.forod = { x: 500, y: 500, size: 10, speed: 2.8 };
+            }
+            
+            gameRef.current.buffs = [spawnBuff(), spawnBuff(), spawnBuff()];
+          };
+
+          useEffect(() => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const game = gameRef.current;
+            
+            // PC Controls
+            const handleKeyDown = (e) => {
+              if (controlMode !== 'pc') return;
+              if (game.stunned) return;
+              
+              game.keys[e.key] = true;
+              
+              if (e.key === ' ' && game.dashReady && gameState === 'playing') {
+                game.dashReady = false;
+                game.dashCooldown = 180;
+                
+                const dashDistance = 80;
+                let dx = 0, dy = 0;
+                
+                if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) dy = -1;
+                if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) dy = 1;
+                if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) dx = -1;
+                if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) dx = 1;
+                
+                if (dx === 0 && dy === 0) dy = -1;
+                
+                const length = Math.sqrt(dx * dx + dy * dy);
+                game.ana.x += (dx / length) * dashDistance;
+                game.ana.y += (dy / length) * dashDistance;
+                
+                game.ana.x = Math.max(0, Math.min(game.width - game.ana.size * 2, game.ana.x));
+                game.ana.y = Math.max(0, Math.min(game.height - game.ana.size * 2, game.ana.y));
+                
+                e.preventDefault();
+              }
+              
+              if (e.key === 'e' || e.key === 'E') {
+                if (game.pushReady && gameState === 'playing') {
+                  game.pushReady = false;
+                  game.pushCooldown = 300;
+                  
+                  const dx = game.forod.x - game.ana.x;
+                  const dy = game.forod.y - game.ana.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  
+                  if (dist < 150) {
+                    const pushForce = 120;
+                    game.forod.x += (dx / dist) * pushForce;
+                    game.forod.y += (dy / dist) * pushForce;
+                    
+                    game.forod.x = Math.max(0, Math.min(game.width - game.forod.size * 2, game.forod.x));
+                    game.forod.y = Math.max(0, Math.min(game.height - game.forod.size * 2, game.forod.y));
+                  }
+                }
+                e.preventDefault();
+              }
+              
+              e.preventDefault();
+            };
+            
+            const handleKeyUp = (e) => {
+              if (controlMode !== 'pc') return;
+              game.keys[e.key] = false;
+              e.preventDefault();
+            };
+            
+            // Mobile Controls - Touch for movement
+            const handleTouchStart = (e) => {
+              if (controlMode !== 'mobile' || gameState !== 'playing') return;
+              
+              const touch = e.touches[0];
+              const rect = canvas.getBoundingClientRect();
+              const x = touch.clientX - rect.left;
+              const y = touch.clientY - rect.top;
+              
+              // Check if touched joystick area (bottom-left)
+              if (x < 150 && y > game.height - 150) {
+                game.joystick.active = true;
+                game.joystick.startX = x;
+                game.joystick.startY = y;
+                game.joystick.x = x;
+                game.joystick.y = y;
+              }
+            };
+            
+            const handleTouchMove = (e) => {
+              if (controlMode !== 'mobile' || !game.joystick.active) return;
+              e.preventDefault();
+              
+              const touch = e.touches[0];
+              const rect = canvas.getBoundingClientRect();
+              const x = touch.clientX - rect.left;
+              const y = touch.clientY - rect.top;
+              
+              game.joystick.x = x;
+              game.joystick.y = y;
+              
+              const dx = x - game.joystick.startX;
+              const dy = y - game.joystick.startY;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              const maxDistance = 40;
+              
+              if (distance > 0) {
+                const normalized = Math.min(distance, maxDistance) / maxDistance;
+                game.touchMovement.x = (dx / distance) * normalized;
+                game.touchMovement.y = (dy / distance) * normalized;
+              }
+            };
+            
+            const handleTouchEnd = () => {
+              if (controlMode !== 'mobile') return;
+              game.joystick.active = false;
+              game.touchMovement.x = 0;
+              game.touchMovement.y = 0;
+            };
+            
+            const handleClick = () => {
+              if (gameState === 'waiting') {
+                setGameState('playing');
+              }
+            };
+            
+            if (controlMode === 'pc') {
+              window.addEventListener('keydown', handleKeyDown);
+              window.addEventListener('keyup', handleKeyUp);
+            }
+            
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('touchstart', handleTouchStart);
+            canvas.addEventListener('touchmove', handleTouchMove);
+            canvas.addEventListener('touchend', handleTouchEnd);
+            
+            let frameCount = 0;
+            
+            const gameLoop = () => {
+              frameCount++;
+              
+              ctx.fillStyle = '#1a1a2e';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              
+              // Draw grid with dynamic dimensions
+              ctx.strokeStyle = '#2d2d44';
+              ctx.lineWidth = 1;
+              for (let i = 0; i < game.width; i += 30) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, game.height);
+                ctx.stroke();
+              }
+              for (let i = 0; i < game.height; i += 30) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(game.width, i);
+                ctx.stroke();
+              }
+              
+              if (gameState === 'playing') {
+                if (game.dashCooldown > 0) {
+                  game.dashCooldown--;
+                  if (game.dashCooldown === 0) game.dashReady = true;
+                }
+                
+                if (game.pushCooldown > 0) {
+                  game.pushCooldown--;
+                  if (game.pushCooldown === 0) game.pushReady = true;
+                }
+                
+                if (game.speedBoostTime > 0) {
+                  game.speedBoostTime--;
+                  if (game.speedBoostTime === 0) {
+                    game.speedBoostActive = false;
+                    game.ana.speed = 3;
+                  }
+                }
+                
+                if (game.invisibleTime > 0) {
+                  game.invisibleTime--;
+                  if (game.invisibleTime === 0) game.invisibleActive = false;
+                }
+                
+                if (game.stunnedTime > 0) {
+                  game.stunnedTime--;
+                  if (game.stunnedTime === 0) {
+                    game.stunned = false;
+                    setStunned(false);
+                  }
+                }
+                
+                if (game.l3otlaStunCooldown > 0) {
+                  game.l3otlaStunCooldown--;
+                  if (game.l3otlaStunCooldown === 0) game.l3otlaStunReady = true;
+                }
+                
+                if (game.l3otlaDashCooldown > 0) {
+                  game.l3otlaDashCooldown--;
+                  if (game.l3otlaDashCooldown === 0) game.l3otlaDashReady = true;
+                }
+                
+                if (game.l3otlaCloneCooldown > 0) {
+                  game.l3otlaCloneCooldown--;
+                  if (game.l3otlaCloneCooldown === 0) game.l3otlaCloneReady = true;
+                }
+                
+                // Move ana
+                if (!game.stunned) {
+                  const speed = game.ana.speed;
+                  let newX = game.ana.x;
+                  let newY = game.ana.y;
+                  
+                  if (controlMode === 'pc') {
+                    if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) newY -= speed;
+                    if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) newY += speed;
+                    if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) newX -= speed;
+                    if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) newX += speed;
+                  } else {
+                    // Mobile movement
+                    newX += game.touchMovement.x * speed * 1.5;
+                    newY += game.touchMovement.y * speed * 1.5;
+                  }
+                  
+                  game.ana.x = Math.max(0, Math.min(game.width - game.ana.size * 2, newX));
+                  game.ana.y = Math.max(0, Math.min(game.height - game.ana.size * 2, newY));
+                }
+                
+                const distToAna = Math.sqrt(
+                  Math.pow(game.l3otla.x - game.ana.x, 2) + 
+                  Math.pow(game.l3otla.y - game.ana.y, 2)
+                );
+                
+                if (game.l3otlaStunReady && distToAna < 80 && !game.invisibleActive) {
+                  game.l3otlaStunReady = false;
+                  game.l3otlaStunCooldown = 300;
+                  game.stunned = true;
+                  game.stunnedTime = 90;
+                  setStunned(true);
+                  
+                  setActiveBuffs(prev => [...prev, '⚡ STUNNED!']);
+                  setTimeout(() => {
+                    setActiveBuffs(prev => prev.filter(b => b !== '⚡ STUNNED!'));
+                  }, 1500);
+                }
+                
+                if (game.l3otlaDashReady && distToAna < 120) {
+                  game.l3otlaDashReady = false;
+                  game.l3otlaDashCooldown = 240;
+                  
+                  const dx = game.l3otla.x - game.ana.x;
+                  const dy = game.l3otla.y - game.ana.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  
+                  if (dist > 0) {
+                    game.l3otla.x += (dx / dist) * 100;
+                    game.l3otla.y += (dy / dist) * 100;
+                  }
+                }
+                
+                if (game.l3otlaCloneReady && distToAna < 200) {
+                  game.l3otlaCloneReady = false;
+                  game.l3otlaCloneCooldown = 480;
+                  
+                  for (let i = 0; i < 2; i++) {
+                    const angle = (Math.PI * 2 / 2) * i;
+                    game.shadowClones.push({
+                      x: game.l3otla.x + Math.cos(angle) * 50,
+                      y: game.l3otla.y + Math.sin(angle) * 50,
+                      size: 10,
+                      lifetime: 180,
+                      opacity: 0.7
+                    });
+                  }
+                }
+                
+                game.shadowClones = game.shadowClones.filter(clone => {
+                  clone.lifetime--;
+                  clone.opacity = clone.lifetime / 180 * 0.7;
+                  
+                  const dx = clone.x - game.ana.x;
+                  const dy = clone.y - game.ana.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  
+                  if (dist > 0) {
+                    clone.x += (dx / dist) * 4;
+                    clone.y += (dy / dist) * 4;
+                  }
+                  
+                  clone.x = Math.max(0, Math.min(game.width - clone.size * 2, clone.x));
+                  clone.y = Math.max(0, Math.min(game.height - clone.size * 2, clone.y));
+                  
+                  return clone.lifetime > 0;
+                });
+                
+                if (game.jukeTimer <= 0 && distToAna < 150) {
+                  game.jukeTimer = 30 + Math.random() * 30;
+                  const angle = Math.random() * Math.PI * 2;
+                  game.jukeDirection = {
+                    x: Math.cos(angle),
+                    y: Math.sin(angle)
+                  };
+                }
+                
+                if (game.jukeTimer > 0) {
+                  game.jukeTimer--;
+                }
+                
+                const dx1 = game.l3otla.x - game.ana.x;
+                const dy1 = game.l3otla.y - game.ana.y;
+                const dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+                
+                if (dist1 > 0) {
+                  let escapeX = (dx1 / dist1) * game.l3otla.speed;
+                  let escapeY = (dy1 / dist1) * game.l3otla.speed;
+                  
+                  if (game.jukeTimer > 0 && distToAna < 150) {
+                    escapeX += game.jukeDirection.x * game.l3otla.speed * 0.4;
+                    escapeY += game.jukeDirection.y * game.l3otla.speed * 0.4;
+                  }
+                  
+                  const nextX = game.l3otla.x + escapeX;
+                  const nextY = game.l3otla.y + escapeY;
+                  
+                  const margin = 50;
+                  let avoidX = 0;
+                  let avoidY = 0;
+                  
+                  if (nextX < margin) {
+                    avoidX = game.l3otla.speed * 0.5;
+                  } else if (nextX > game.width - margin - game.l3otla.size * 2) {
+                    avoidX = -game.l3otla.speed * 0.5;
+                  }
+                  
+                  if (nextY < margin) {
+                    avoidY = game.l3otla.speed * 0.5;
+                  } else if (nextY > game.height - margin - game.l3otla.size * 2) {
+                    avoidY = -game.l3otla.speed * 0.5;
+                  }
+                  
+                  escapeX += avoidX;
+                  escapeY += avoidY;
+                  
+                  if ((game.l3otla.x < margin || game.l3otla.x > game.width - margin - game.l3otla.size * 2) &&
+                      (game.l3otla.y < margin || game.l3otla.y > game.height - margin - game.l3otla.size * 2)) {
+                    const centerX = game.width / 2 - game.l3otla.x;
+                    const centerY = game.height / 2 - game.l3otla.y;
+                    const centerDist = Math.sqrt(centerX * centerX + centerY * centerY);
+                    if (centerDist > 0) {
+                      escapeX = (centerX / centerDist) * game.l3otla.speed;
+                      escapeY = (centerY / centerDist) * game.l3otla.speed;
+                    }
+                  }
+                  
+                  game.l3otla.x += escapeX;
+                  game.l3otla.y += escapeY;
+                }
+                
+                game.l3otla.x = Math.max(0, Math.min(game.width - game.l3otla.size * 2, game.l3otla.x));
+                game.l3otla.y = Math.max(0, Math.min(game.height - game.l3otla.size * 2, game.l3otla.y));
+                
+                if (!game.invisibleActive) {
+                  const dx2 = game.ana.x - game.forod.x;
+                  const dy2 = game.ana.y - game.forod.y;
+                  const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                  
+                  if (dist2 > 0) {
+                    game.forod.x += (dx2 / dist2) * game.forod.speed;
+                    game.forod.y += (dy2 / dist2) * game.forod.speed;
+                  }
+                }
+                
+                game.forod.x = Math.max(0, Math.min(game.width - game.forod.size * 2, game.forod.x));
+                game.forod.y = Math.max(0, Math.min(game.height - game.forod.size * 2, game.forod.y));
+                
+                game.buffs = game.buffs.filter(buff => {
+                  const distToBuff = Math.sqrt(
+                    Math.pow(game.ana.x - buff.x, 2) + 
+                    Math.pow(game.ana.y - buff.y, 2)
+                  );
+                  
+                  if (distToBuff < game.ana.size + buff.size) {
+                    if (buff.type.name === 'speed') {
+                      game.speedBoostActive = true;
+                      game.speedBoostTime = 300;
+                      game.ana.speed = 5;
+                    } else if (buff.type.name === 'invisible') {
+                      game.invisibleActive = true;
+                      game.invisibleTime = 240;
+                    } else if (buff.type.name === 'slow') {
+                      const oldL3otlaSpeed = game.l3otla.speed;
+                      const oldForodSpeed = game.forod.speed;
+                      game.l3otla.speed = 3;
+                      game.forod.speed = 1.8;
+                      setTimeout(() => {
+                        game.l3otla.speed = oldL3otlaSpeed;
+                        game.forod.speed = oldForodSpeed;
+                      }, 3000);
+                    }
+                    
+                    setActiveBuffs(prev => [...prev, buff.type.effect]);
+                    setTimeout(() => {
+                      setActiveBuffs(prev => prev.filter(b => b !== buff.type.effect));
+                    }, 2000);
+                    
+                    return false;
+                  }
+                  return true;
+                });
+                
+                if (frameCount % 180 === 0 && game.buffs.length < 4) {
+                  game.buffs.push(spawnBuff());
+                }
+                
+                const distToL3otla = Math.sqrt(
+                  Math.pow(game.ana.x - game.l3otla.x, 2) + 
+                  Math.pow(game.ana.y - game.l3otla.y, 2)
+                );
+                
+                if (distToL3otla < (game.ana.size + game.l3otla.size) * 1.5) {
+                  setCaughtBy('l3otla'); // Corrected from 'ana' in the original script
+                  setGameState('caught');
+                }
+                
+                const distToForod = Math.sqrt(
+                  Math.pow(game.ana.x - game.forod.x, 2) + 
+                  Math.pow(game.ana.y - game.forod.y, 2)
+                );
+                
+                if (distToForod < (game.ana.size + game.forod.size) * 1.5) {
+                  setCaughtBy('forod');
+                  setGameState('caught');
+                }
+                
+                setScore(s => s + 1);
+              }
+              
+              // Draw game elements
+              game.buffs.forEach(buff => {
+                ctx.fillStyle = buff.type.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = buff.type.color;
+                ctx.beginPath();
+                ctx.arc(buff.x, buff.y, buff.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(buff.type.icon, buff.x, buff.y + 7);
+              });
+              
+              game.shadowClones.forEach(clone => {
+                ctx.globalAlpha = clone.opacity;
+                ctx.fillStyle = '#ef4444';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(clone.x + clone.size, clone.y + clone.size, clone.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('clone', clone.x + clone.size, clone.y - 8);
+                ctx.globalAlpha = 1;
+              });
+              
+              ctx.fillStyle = '#ef4444';
+              ctx.shadowBlur = 15;
+              ctx.shadowColor = '#ef4444';
+              ctx.beginPath();
+              ctx.arc(game.l3otla.x + game.l3otla.size, game.l3otla.y + game.l3otla.size, game.l3otla.size, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.shadowBlur = 0;
+              
+              if (game.l3otlaStunReady) {
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(game.l3otla.x + game.l3otla.size, game.l3otla.y + game.l3otla.size, game.l3otla.size + 5, 0, Math.PI * 2);
+                ctx.stroke();
+              }
+              
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold 14px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText('l3otla', game.l3otla.x + game.l3otla.size, game.l3otla.y - 8);
+              
+              if (!game.invisibleActive || frameCount % 20 < 10) {
+                if (game.stunned) {
+                  ctx.fillStyle = '#9333ea';
+                  ctx.shadowBlur = 20;
+                  ctx.shadowColor = '#9333ea';
+                } else if (game.speedBoostActive) {
+                  ctx.fillStyle = '#fbbf24';
+                  ctx.shadowBlur = 15;
+                  ctx.shadowColor = '#fbbf24';
+                } else {
+                  ctx.fillStyle = '#3b82f6';
+                  ctx.shadowBlur = 15;
+                  ctx.shadowColor = '#3b82f6';
+                }
+                
+                ctx.beginPath();
+                ctx.arc(game.ana.x + game.ana.size, game.ana.y + game.ana.size, game.ana.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                if (game.stunned) {
+                  ctx.fillStyle = '#fbbf24';
+                  ctx.font = '20px Arial';
+                  ctx.fillText('⚡', game.ana.x + game.ana.size, game.ana.y - 15);
+                }
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('ana', game.ana.x + game.ana.size, game.ana.y - 8);
+              }
+              
+              ctx.fillStyle = '#22c55e';
+              ctx.shadowBlur = 15;
+              ctx.shadowColor = '#22c55e';
+              ctx.beginPath();
+              ctx.arc(game.forod.x + game.forod.size, game.forod.y + game.forod.size, game.forod.size, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.shadowBlur = 0;
+              
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold 14px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText('forod', game.forod.x + game.forod.size, game.forod.y - 8);
+              
+              // Draw mobile controls
+              if (controlMode === 'mobile' && gameState === 'playing') {
+                const joystickX = 75;
+                const joystickY = game.height - 75;
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.beginPath();
+                ctx.arc(joystickX, joystickY, 50, 0, Math.PI * 2);
+                ctx.fill();
+                
+                if (game.joystick.active) {
+                  ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
+                  const dx = game.joystick.x - game.joystick.startX;
+                  const dy = game.joystick.y - game.joystick.startY;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  const maxDist = 40;
+                  const clampedDist = Math.min(dist, maxDist);
+                  const angle = Math.atan2(dy, dx);
+                  const joyX = joystickX + Math.cos(angle) * clampedDist;
+                  const joyY = joystickY + Math.sin(angle) * clampedDist;
+                  ctx.beginPath();
+                  ctx.arc(joyX, joyY, 25, 0, Math.PI * 2);
+                  ctx.fill();
+                } else {
+                  ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+                  ctx.beginPath();
+                  ctx.arc(joystickX, joystickY, 25, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+              }
+              
+              // Draw UI
+              ctx.fillStyle = '#ffffff';
+              ctx.font = '12px Arial';
+              ctx.textAlign = 'left';
+              
+              if (!game.dashReady) {
+                ctx.fillText(`Dash: ${Math.ceil(game.dashCooldown / 60)}s`, 10, 20);
+              } else {
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(`Dash: READY ${controlMode === 'pc' ? '(Space)' : ''}`, 10, 20);
+              }
+              
+              ctx.fillStyle = '#ffffff';
+              if (!game.pushReady) {
+                ctx.fillText(`Push: ${Math.ceil(game.pushCooldown / 60)}s`, 10, 40);
+              } else {
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(`Push: READY ${controlMode === 'pc' ? '(E)' : ''}`, 10, 40);
+              }
+              
+              ctx.fillStyle = '#ef4444';
+              ctx.font = 'bold 11px Arial';
+              ctx.textAlign = 'right';
+              ctx.fillText(`L3otla Abilities:`, game.width - 10, 20);
+              
+              ctx.fillStyle = game.l3otlaStunReady ? '#22c55e' : '#666';
+              ctx.fillText(`Stun ${game.l3otlaStunReady ? '✓' : Math.ceil(game.l3otlaStunCooldown / 60) + 's'}`, game.width - 10, 35);
+              
+              ctx.fillStyle = game.l3otlaDashReady ? '#22c55e' : '#666';
+              ctx.fillText(`Dash ${game.l3otlaDashReady ? '✓' : Math.ceil(game.l3otlaDashCooldown / 60) + 's'}`, game.width - 10, 50);
+              
+              ctx.fillStyle = game.l3otlaCloneReady ? '#22c55e' : '#666';
+              ctx.fillText(`Clone ${game.l3otlaCloneReady ? '✓' : Math.ceil(game.l3otlaCloneCooldown / 60) + 's'}`, game.width - 10, 65);
+            };
+            
+            const interval = setInterval(gameLoop, 1000 / 60);
+            
+            return () => {
+              clearInterval(interval);
+              if (controlMode === 'pc') {
+                window.removeEventListener('keydown', handleKeyDown);
+                window.removeEventListener('keyup', handleKeyUp);
+              }
+              canvas.removeEventListener('click', handleClick);
+              canvas.removeEventListener('touchstart', handleTouchStart);
+              canvas.removeEventListener('touchmove', handleTouchMove);
+              canvas.removeEventListener('touchend', handleTouchEnd);
+            };
+          }, [gameState, controlMode]);
+          
+          const resetGame = () => {
+            if (controlMode === 'mobile') {
+              const width = 360;
+              const height = 640;
+              setCanvasDimensions({ width, height });
+              gameRef.current.width = width;
+              gameRef.current.height = height;
+              gameRef.current.ana = { x: 180, y: 320, size: 10, speed: 3 };
+              gameRef.current.l3otla = { x: 60, y: 100, size: 10, speed: 6 };
+              gameRef.current.forod = { x: 300, y: 540, size: 10, speed: 2.8 };
+            } else {
+              const width = 600;
+              const height = 600;
+              setCanvasDimensions({ width, height });
+              gameRef.current.width = width;
+              gameRef.current.height = height;
+              gameRef.current.ana = { x: 300, y: 300, size: 10, speed: 3 };
+              gameRef.current.l3otla = { x: 100, y: 100, size: 10, speed: 6 };
+              gameRef.current.forod = { x: 500, y: 500, size: 10, speed: 2.8 };
+            }
+            gameRef.current.shadowClones = [];
+            gameRef.current.keys = {};
+            gameRef.current.buffs = [spawnBuff(), spawnBuff(), spawnBuff()];
+            gameRef.current.speedBoostActive = false;
+            gameRef.current.speedBoostTime = 0;
+            gameRef.current.dashReady = true;
+            gameRef.current.dashCooldown = 0;
+            gameRef.current.pushReady = true;
+            gameRef.current.pushCooldown = 0;
+            gameRef.current.invisibleActive = false;
+            gameRef.current.invisibleTime = 0;
+            gameRef.current.stunned = false;
+            gameRef.current.stunnedTime = 0;
+            gameRef.current.l3otlaStunReady = true;
+            gameRef.current.l3otlaStunCooldown = 0;
+            gameRef.current.l3otlaDashReady = true;
+            gameRef.current.l3otlaDashCooldown = 0;
+            gameRef.current.l3otlaCloneReady = true;
+            gameRef.current.l3otlaCloneCooldown = 0;
+            gameRef.current.jukeTimer = 0;
+            gameRef.current.joystick = { x: 0, y: 0, active: false, startX: 0, startY: 0 };
+            gameRef.current.touchMovement = { x: 0, y: 0 };
+            setScore(0);
+            setCaughtBy('');
+            setActiveBuffs([]);
+            setStunned(false);
+            setGameState('waiting');
+          };
+          
+          const handleDashMobile = () => {
+            const game = gameRef.current;
+            if (game.dashReady && gameState === 'playing' && !game.stunned) {
+              game.dashReady = false;
+              game.dashCooldown = 180;
+              
+              const dashDistance = 80;
+              let dx = game.touchMovement.x;
+              let dy = game.touchMovement.y;
+              
+              if (dx === 0 && dy === 0) dy = -1;
+              
+              const length = Math.sqrt(dx * dx + dy * dy);
+              if (length > 0) {
+                game.ana.x += (dx / length) * dashDistance;
+                game.ana.y += (dy / length) * dashDistance;
+                
+                game.ana.x = Math.max(0, Math.min(game.width - game.ana.size * 2, game.ana.x));
+                game.ana.y = Math.max(0, Math.min(game.height - game.ana.size * 2, game.ana.y));
+              }
+            }
+          };
+          
+          const handlePushMobile = () => {
+            const game = gameRef.current;
+            if (game.pushReady && gameState === 'playing') {
+              game.pushReady = false;
+              game.pushCooldown = 300;
+              
+              const dx = game.forod.x - game.ana.x;
+              const dy = game.forod.y - game.ana.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              
+              if (dist < 150) {
+                const pushForce = 120;
+                game.forod.x += (dx / dist) * pushForce;
+                game.forod.y += (dy / dist) * pushForce;
+                
+                game.forod.x = Math.max(0, Math.min(game.width - game.forod.size * 2, game.forod.x));
+                game.forod.y = Math.max(0, Math.min(game.height - game.forod.size * 2, game.forod.y));
+              }
+            }
+          };
+
+          if (gameState === 'menu') {
+            return (
+              <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 p-4">
+                <h1 className="text-4xl font-bold text-white mb-4">🎮 Arena Chase</h1>
+                <p className="text-gray-300 mb-8">Choose Your Control Mode</p>
+                
+                <div className="flex gap-6 flex-wrap justify-center">
+                  <div 
+                    onClick={() => selectControlMode('pc')}
+                    className="bg-gray-800 border-4 border-blue-500 rounded-lg p-8 w-64 cursor-pointer hover:bg-gray-700 hover:scale-105 transition-all"
+                  >
+                    <Monitor className="w-20 h-20 mx-auto mb-4 text-blue-400" />
+                    <h2 className="text-2xl font-bold text-white text-center mb-2">PC</h2>
+                    <p className="text-gray-400 text-sm text-center mb-4">600x600 Arena</p>
+                    <div className="text-xs text-gray-300 space-y-1">
+                      <p>• WASD / Arrow Keys - Move</p>
+                      <p>• Space - Dash</p>
+                      <p>• E - Push</p>
+                    </div>
+                  </div>
+                  
+                  <div 
+                    onClick={() => selectControlMode('mobile')}
+                    className="bg-gray-800 border-4 border-green-500 rounded-lg p-8 w-64 cursor-pointer hover:bg-gray-700 hover:scale-105 transition-all"
+                  >
+                    <Smartphone className="w-20 h-20 mx-auto mb-4 text-green-400" />
+                    <h2 className="text-2xl font-bold text-white text-center mb-2">Mobile</h2>
+                    <p className="text-gray-400 text-sm text-center mb-4">360x640 Arena (9:16)</p>
+                    <div className="text-xs text-gray-300 space-y-1">
+                      <p>• Virtual Joystick - Move</p>
+                      <p>• Dash Button</p>
+                      <p>• Push Button</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 p-4">
+              <div className="mb-4 text-center">
+                <h1 className={`${controlMode === 'mobile' ? 'text-2xl' : 'text-3xl'} font-bold text-white mb-2`}>
+                  🎮 Arena Chase {controlMode === 'mobile' ? '📱' : '💻'}
+                </h1>
+                <p className={`${controlMode === 'mobile' ? 'text-sm' : 'text-base'} text-gray-300 mb-1`}>
+                  <span className="text-blue-400 font-semibold">Ana (You)</span> catch <span className="text-red-400 font-semibold">L3otla</span> • Avoid <span className="text-green-400 font-semibold">Forod</span>!
+                </p>
+                <p className={`${controlMode === 'mobile' ? 'text-xs' : 'text-sm'} text-red-400 font-bold`}>⚠️ L3otla: STUN + DASH + CLONES + JUKES!</p>
+                
+                {stunned && (
+                  <div className={`mt-2 bg-purple-600 text-white px-4 py-2 rounded-lg font-bold animate-pulse ${controlMode === 'mobile' ? 'text-sm' : ''}`}>
+                    ⚡ STUNNED! Can't move! ⚡
+                  </div>
+                )}
+                
+                {activeBuffs.length > 0 && (
+                  <div className={`mt-2 flex gap-2 justify-center flex-wrap ${controlMode === 'mobile' ? 'max-w-sm mx-auto' : ''}`}>
+                    {activeBuffs.map((buff, i) => (
+                      <span key={i} className={`bg-yellow-500 text-gray-900 px-3 py-1 rounded-full ${controlMode === 'mobile' ? 'text-xs' : 'text-xs'} font-bold animate-pulse`}>
+                        {buff}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                {gameState === 'waiting' && (
+                  <p className={`${controlMode === 'mobile' ? 'text-base' : 'text-lg'} text-green-400 font-semibold mt-2 animate-pulse`}>
+                    Click/Tap the canvas to start!
+                  </p>
+                )}
+                <div className={`mt-2 ${controlMode === 'mobile' ? 'text-lg' : 'text-xl'} font-bold text-yellow-400`}>
+                  ⏱️ Time: {Math.floor(score / 60)}s
+                </div>
+              </div>
+              
+              <div className="relative">
+                <canvas
+                  ref={canvasRef}
+                  width={canvasDimensions.width}
+                  height={canvasDimensions.height}
+                  className="border-4 border-gray-700 rounded-lg bg-gray-800 shadow-2xl"
+                />
+                
+                {gameState === 'caught' && (
+                  <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 border-4 border-yellow-400 text-white p-8 rounded-xl shadow-2xl text-center backdrop-blur-sm bg-opacity-90 ${controlMode === 'mobile' ? 'w-5/6' : 'w-96'}`}>
+                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <h2 className="text-3xl font-bold text-red-400 mb-2">GAME OVER</h2>
+                    <p className="text-xl text-white mb-4">
+                      Caught by <span className={`font-extrabold ${caughtBy === 'l3otla' ? 'text-red-400' : 'text-green-400'}`}>{caughtBy.toUpperCase()}</span>!
+                    </p>
+                    <p className="text-2xl font-semibold text-yellow-400 mb-6">
+                      Survival Time: {Math.floor(score / 60)} seconds
+                    </p>
+                    <button
+                      onClick={resetGame}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 transform hover:scale-105"
+                    >
+                      Try Again!
+                    </button>
+                  </div>
+                )}
+
+                {/* Mobile Control Buttons */}
+                {controlMode === 'mobile' && gameState === 'playing' && (
+                  <div className="absolute bottom-0 right-0 p-4 flex flex-col items-end gap-3">
+                    <button
+                      onClick={handleDashMobile}
+                      disabled={!gameRef.current.dashReady || stunned}
+                      className={`w-16 h-16 rounded-full shadow-lg font-bold text-white text-lg transition-all ${
+                        gameRef.current.dashReady && !stunned
+                          ? 'bg-blue-500 hover:bg-blue-600 active:scale-95'
+                          : 'bg-gray-600 cursor-not-allowed'
+                      }`}
+                      style={{ opacity: 0.8 }}
+                    >
+                      {gameRef.current.dashReady ? 'Dash' : Math.ceil(gameRef.current.dashCooldown / 60)}
+                    </button>
+                    <button
+                      onClick={handlePushMobile}
+                      disabled={!gameRef.current.pushReady}
+                      className={`w-16 h-16 rounded-full shadow-lg font-bold text-white text-lg transition-all ${
+                        gameRef.current.pushReady
+                          ? 'bg-purple-500 hover:bg-purple-600 active:scale-95'
+                          : 'bg-gray-600 cursor-not-allowed'
+                      }`}
+                      style={{ opacity: 0.8 }}
+                    >
+                      {gameRef.current.pushReady ? 'Push' : Math.ceil(gameRef.current.pushCooldown / 60)}
+                    </button>
+                  </div>
+                )}
+
+              </div>
+              <div className={`mt-4 ${controlMode === 'mobile' ? 'text-sm' : 'text-base'} text-gray-500`}>
+                Controls: {controlMode === 'pc' ? 'WASD/Arrows, Space (Dash), E (Push)' : 'Joystick (Bottom Left), Dash/Push Buttons (Bottom Right)'}
+              </div>
+            </div>
+          );
+        };
+        
+        // Render the React component
+        ReactDOM.createRoot(document.getElementById('root')).render(<ArenaGame />);
+    </script>
+</body>
+</html>
