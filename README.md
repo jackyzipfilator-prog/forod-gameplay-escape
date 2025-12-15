@@ -5,4 +5,4 @@ ITEMS AND TOOLS : u can dash and push the forod and get buffs to cartch the l3ot
 
 NOTICE : the l3otla can make u stunned for a bit so be carefull
 
-SCREENSHOTS : screenshots/firefox_FQgIQ729UT.png
+SCREENSHOTS : 
